@@ -61,7 +61,30 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				financial: {
+					primary: 'hsl(var(--financial-primary))',
+					secondary: 'hsl(var(--financial-secondary))',
+					accent: 'hsl(var(--financial-accent))',
+					success: 'hsl(var(--financial-success))',
+					warning: 'hsl(var(--financial-warning))',
+					danger: 'hsl(var(--financial-danger))',
+					neutral: 'hsl(var(--financial-neutral))'
 				}
+			},
+			backgroundImage: {
+				'gradient-primary': 'var(--gradient-primary)',
+				'gradient-card': 'var(--gradient-card)',
+				'gradient-alert': 'var(--gradient-alert)'
+			},
+			boxShadow: {
+				'elegant': 'var(--shadow-elegant)',
+				'card': 'var(--shadow-card)',
+				'alert': 'var(--shadow-alert)'
+			},
+			transitionTimingFunction: {
+				'smooth': 'var(--transition-smooth)',
+				'fast': 'var(--transition-fast)'
 			},
 			borderRadius: {
 				lg: 'var(--radius)',
