@@ -162,7 +162,7 @@ def main():
     engine = get_engine()
     # Create table if missing
     with engine.begin() as conn: conn.execute(sa.text(CREATE_SQL))
-    dsn = engine.url + "?sslmode=require"
+    dsn = str(engine.url)
     print(f"Ingesting {len(files)} files → ia_filing using {args.workers} worker(s)\n")
     # Choose execution mode
     if args.workers == 1:
