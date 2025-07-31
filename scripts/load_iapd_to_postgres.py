@@ -170,6 +170,9 @@ def ingest_df(name: str, df: pd.DataFrame, dsn: str) -> str:
 # Process one task (local or s3)
 def process_task(task: Tuple[str, Union[Path, Tuple[str,str]]], dsn: str) -> str:
     name, src = task
+    # ▷ Skip any FOIA CSVs (they’re badly formatted and we don’t ingest them)
+    if name.lower().endswith('.csv') and 'foia' in name.lower():
+        return f"· {name}: skipping FOIA file"
     try:
         df = read_local(src) if isinstance(src, Path) else read_s3(src[0], src[1])
         return ingest_df(name, df, dsn)
