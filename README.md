@@ -45,43 +45,56 @@ This project automates the collection and analysis of Investment Adviser Public 
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd iapd-risk-scoring
+   cd ADV
    ```
 
-2. **Set up Python environment**
+2. **Install dependencies**
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
-3. **Set up environment variables**
+3. **Install and setup PostgreSQL**
    ```bash
-   cp .env.example .env
-   # Edit .env with your database and AWS credentials
+   sudo apt update && sudo apt install -y postgresql postgresql-contrib
+   sudo systemctl start postgresql && sudo systemctl enable postgresql
+   sudo -u postgres createuser --createdb --pwprompt iapdadmin
+   sudo -u postgres createdb iapd --owner=iapdadmin
    ```
 
-4. **Set up database**
+4. **Configure environment variables**
+   Create a `.env` file with:
    ```bash
-   # Create PostgreSQL database
-   createdb iapd
-   
-   # Run initial data load (optional - for testing)
+   PGHOST=localhost
+   PGPORT=5432
+   PGDATABASE=iapd
+   PGUSER=iapdadmin
+   PGPASSWORD=your-secure-password
+   AWS_ACCESS_KEY_ID=your-access-key
+   AWS_SECRET_ACCESS_KEY=your-secret-key
+   ```
+
+5. **Initialize and verify setup**
+   ```bash
+   python setup_local.py
+   ```
+   This script will:
+   - Check PostgreSQL service status
+   - Verify database connection
+   - Initialize database schema automatically
+   - Provide troubleshooting guidance if issues occur
+
+6. **Run the data pipeline (optional - for testing)**
+   ```bash
    python scripts/fetch_iapd_data.py
    python scripts/unzip_iapd_zips.py
-   python scripts/load_iapd_to_postgres.py data/unzipped/iapd/
+   python load_data.py data/unzipped/iapd/
+   python scripts/run_risk_calculation.py
    ```
 
-5. **Start the API server**
+7. **Start the API server**
    ```bash
    cd api
    python app.py
-   ```
-
-6. **Start the frontend**
-   ```bash
-   npm install
-   npm run dev
    ```
 
 ## 📊 Risk Scoring Algorithm
@@ -180,7 +193,7 @@ Located in `scripts/calculate_risk_scores.py`, this approach provides:
    # Create terraform.tfvars
    aws_region = "us-east-1"
    environment = "development"
-   db_password = "your-secure-password"
+   db_password = "your-database-password"
    ```
 
 3. **Deploy infrastructure**
@@ -236,7 +249,7 @@ PGHOST=your-rds-endpoint
 PGPORT=5432
 PGDATABASE=iapd
 PGUSER=iapdadmin
-PGPASSWORD=your-password
+PGPASSWORD=your-secure-password
 
 # AWS
 AWS_ACCESS_KEY_ID=your-access-key
