@@ -174,7 +174,8 @@ def ingest_df(name: str, df: pd.DataFrame, dsn: str) -> str:
         ssl_mode = "require" if host != "localhost" else "disable"
         engine = sa.create_engine(dsn, pool_pre_ping=True, connect_args={"sslmode": ssl_mode})
         clean = normalise(df)
-        clean.to_sql("ia_filing", engine, if_exists="append", index=False)
+        with engine.connect() as conn:
+            clean.to_sql("ia_filing", conn, if_exists="append", index=False, schema=None)
         return f"✓ {name}: {len(clean)} rows"
     except Exception as e:
         return f"✗ {name}: {e}"
