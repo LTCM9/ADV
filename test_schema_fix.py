@@ -42,8 +42,7 @@ def test_connection():
             'disclosure_flag': ['N']
         })
         
-        with engine.connect() as conn:
-            test_df.to_sql("ia_filing_test", conn, if_exists="replace", index=False, schema=None)
+        test_df.to_sql("ia_filing_test", engine, if_exists="replace", index=False, method='multi')
         
         print("✓ Schema fix test passed - no parameter conflicts")
         
