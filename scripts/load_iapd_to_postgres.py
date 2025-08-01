@@ -120,7 +120,13 @@ def normalise(df: pd.DataFrame) -> pd.DataFrame:
         out[canon] = df[col] if col else None
     for c in ("raum","total_accounts"): out[c] = pd.to_numeric(out[c], errors="coerce")
     buckets = [c for c in df.columns if c.startswith(CLIENT_BUCKET_PREFIX)]
-    out["total_clients"] = df[buckets].apply(pd.to_numeric, errors="coerce").sum(axis=1) if buckets else None
+    if buckets:
+        bucket_data = df[buckets]
+        for col in buckets:
+            bucket_data[col] = pd.to_numeric(bucket_data[col], errors="coerce")
+        out["total_clients"] = bucket_data.sum(axis=1)
+    else:
+        out["total_clients"] = None
     if {"ChiefComplianceOfficer_FirstName","ChiefComplianceOfficer_LastName","ChiefComplianceOfficer_CRD"}.issubset(df.columns):
         out["cco_id"] = (
             df["ChiefComplianceOfficer_FirstName"].fillna("").str.strip().str.upper()
