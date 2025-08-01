@@ -20,6 +20,7 @@ Dependencies
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from datetime import datetime, timedelta
@@ -316,7 +317,12 @@ def main():
     create_risk_scores_table(engine)
     
     print("Loading data from ia_filing table...")
-    query = "SELECT * FROM ia_filing ORDER BY filing_date"
+    query = """
+    SELECT crd, filing_date, raum, total_clients, total_accounts, 
+           cco_id, disclosure_flag 
+    FROM ia_filing 
+    ORDER BY filing_date
+    """
     df = pd.read_sql(query, engine)
     
     if df.empty:
@@ -405,80 +411,60 @@ def main():
     print("\nSaving risk scores to database...")
     
     if args.update_existing:
-        # Update existing records
-        for _, row in results_df.iterrows():
-            update_sql = """
-            UPDATE risk_scores SET
-                overall_risk_score = :overall_risk_score,
-                risk_category = :risk_category,
-                disclosure_risk = :disclosure_risk,
-                aum_volatility_risk = :aum_volatility_risk,
-                client_concentration_risk = :client_concentration_risk,
-                filing_compliance_risk = :filing_compliance_risk,
-                cco_stability_risk = :cco_stability_risk,
-                size_factor_risk = :size_factor_risk,
-                risk_factors = :risk_factors,
-                last_calculation_date = :last_calculation_date,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE crd = :crd
-            """
-            
-            with engine.begin() as conn:
-                conn.execute(text(update_sql), {
-                    'crd': row['crd'],
-                    'overall_risk_score': row['overall_risk_score'],
-                    'risk_category': row['risk_category'],
-                    'disclosure_risk': row['disclosure_risk'],
-                    'aum_volatility_risk': row['aum_volatility_risk'],
-                    'client_concentration_risk': row['client_concentration_risk'],
-                    'filing_compliance_risk': row['filing_compliance_risk'],
-                    'cco_stability_risk': row['cco_stability_risk'],
-                    'size_factor_risk': row['size_factor_risk'],
-                    'risk_factors': str(row['risk_factors']),
-                    'last_calculation_date': row['last_calculation_date']
-                })
-    else:
-        # Insert new records
-        insert_sql = """
-        INSERT INTO risk_scores (
-            crd, overall_risk_score, risk_category, disclosure_risk,
-            aum_volatility_risk, client_concentration_risk, filing_compliance_risk,
-            cco_stability_risk, size_factor_risk, risk_factors, last_calculation_date
-        ) VALUES (
-            :crd, :overall_risk_score, :risk_category, :disclosure_risk,
-            :aum_volatility_risk, :client_concentration_risk, :filing_compliance_risk,
-            :cco_stability_risk, :size_factor_risk, :risk_factors, :last_calculation_date
-        ) ON CONFLICT (crd) DO UPDATE SET
-            overall_risk_score = EXCLUDED.overall_risk_score,
-            risk_category = EXCLUDED.risk_category,
-            disclosure_risk = EXCLUDED.disclosure_risk,
-            aum_volatility_risk = EXCLUDED.aum_volatility_risk,
-            client_concentration_risk = EXCLUDED.client_concentration_risk,
-            filing_compliance_risk = EXCLUDED.filing_compliance_risk,
-            cco_stability_risk = EXCLUDED.cco_stability_risk,
-            size_factor_risk = EXCLUDED.size_factor_risk,
-            risk_factors = EXCLUDED.risk_factors,
-            last_calculation_date = EXCLUDED.last_calculation_date,
-            updated_at = CURRENT_TIMESTAMP
-        """
+        print("Performing bulk update of existing risk scores...")
+        
+        update_df = results_df.copy()
+        update_df['risk_factors'] = update_df['risk_factors'].apply(json.dumps)
+        update_df['updated_at'] = datetime.now()
         
         with engine.begin() as conn:
-            for _, row in results_df.iterrows():
-                conn.execute(text(insert_sql), {
-                    'crd': row['crd'],
-                    'overall_risk_score': row['overall_risk_score'],
-                    'risk_category': row['risk_category'],
-                    'disclosure_risk': row['disclosure_risk'],
-                    'aum_volatility_risk': row['aum_volatility_risk'],
-                    'client_concentration_risk': row['client_concentration_risk'],
-                    'filing_compliance_risk': row['filing_compliance_risk'],
-                    'cco_stability_risk': row['cco_stability_risk'],
-                    'size_factor_risk': row['size_factor_risk'],
-                    'risk_factors': str(row['risk_factors']),
-                    'last_calculation_date': row['last_calculation_date']
-                })
+            temp_table = "temp_risk_scores_update"
+            update_df.to_sql(temp_table, conn, if_exists='replace', index=False, method='multi')
+            
+            upsert_sql = f"""
+            INSERT INTO risk_scores (
+                crd, overall_risk_score, risk_category, disclosure_risk,
+                aum_volatility_risk, client_concentration_risk, filing_compliance_risk,
+                cco_stability_risk, size_factor_risk, risk_factors, 
+                last_calculation_date, updated_at
+            )
+            SELECT 
+                crd, overall_risk_score, risk_category, disclosure_risk,
+                aum_volatility_risk, client_concentration_risk, filing_compliance_risk,
+                cco_stability_risk, size_factor_risk, risk_factors::jsonb,
+                last_calculation_date, updated_at
+            FROM {temp_table}
+            ON CONFLICT (crd) DO UPDATE SET
+                overall_risk_score = EXCLUDED.overall_risk_score,
+                risk_category = EXCLUDED.risk_category,
+                disclosure_risk = EXCLUDED.disclosure_risk,
+                aum_volatility_risk = EXCLUDED.aum_volatility_risk,
+                client_concentration_risk = EXCLUDED.client_concentration_risk,
+                filing_compliance_risk = EXCLUDED.filing_compliance_risk,
+                cco_stability_risk = EXCLUDED.cco_stability_risk,
+                size_factor_risk = EXCLUDED.size_factor_risk,
+                risk_factors = EXCLUDED.risk_factors,
+                last_calculation_date = EXCLUDED.last_calculation_date,
+                updated_at = CURRENT_TIMESTAMP
+            """
+            
+            conn.execute(text(upsert_sql))
+            conn.execute(text(f"DROP TABLE {temp_table}"))
+            
+        print(f"Updated {len(results_df)} risk score records")
+    else:
+        # Bulk insert new records
+        print("Performing bulk insert of new risk scores...")
+        
+        insert_df = results_df.copy()
+        insert_df['risk_factors'] = insert_df['risk_factors'].apply(json.dumps)
+        insert_df['created_at'] = datetime.now()
+        insert_df['updated_at'] = datetime.now()
+        
+        insert_df.to_sql('risk_scores', engine, if_exists='append', index=False, method='multi')
+        print(f"Inserted {len(results_df)} new risk score records")
     
     print("Risk score calculation completed successfully! ✔")
 
 if __name__ == "__main__":
-    main() 
+    main()    

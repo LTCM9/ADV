@@ -64,21 +64,48 @@ def extract_key_data(df, filename):
         elif 'disclosure' in col_lower:
             disclosure_cols.append(col)
     
-    # Extract data
+    # Extract data using vectorized operations
+    if not crd_col:
+        return []
+    
+    valid_mask = df[crd_col].notna() & (df[crd_col] != '')
+    if not valid_mask.any():
+        return []
+    
+    filtered_df = df[valid_mask].copy()
+    
+    # Convert CRD to integer, handling errors
+    try:
+        filtered_df['crd_int'] = pd.to_numeric(filtered_df[crd_col], errors='coerce').astype('Int64')
+        filtered_df = filtered_df[filtered_df['crd_int'].notna()]
+    except:
+        return []
+    
+    # Extract firm names
+    firm_names = filtered_df[name_col].fillna('').astype(str).str[:100] if name_col else pd.Series([''] * len(filtered_df))
+    
+    # Extract AUM values
+    aum_values = filtered_df[aum_col] if aum_col else pd.Series([None] * len(filtered_df))
+    
+    # Extract client counts
+    client_values = filtered_df[client_col] if client_col else pd.Series([None] * len(filtered_df))
+    
+    disclosure_count = pd.Series([0] * len(filtered_df))
+    for col in disclosure_cols:
+        if col in filtered_df.columns:
+            disclosure_mask = filtered_df[col].astype(str).str.lower().isin(['yes', 'true', '1'])
+            disclosure_count += disclosure_mask.astype(int)
+    
     result = []
-    for _, row in df.iterrows():
+    for idx in filtered_df.index:
         try:
-            crd = row.get(crd_col)
-            if pd.isna(crd) or crd == '':
-                continue
-                
             record = {
-                'crd': int(crd) if crd else None,
-                'firm_name': str(row.get(name_col, ''))[:100],
-                'aum': row.get(aum_col),
-                'total_clients': row.get(client_col),
+                'crd': int(filtered_df.loc[idx, 'crd_int']),
+                'firm_name': firm_names.loc[idx] if idx in firm_names.index else '',
+                'aum': aum_values.loc[idx] if idx in aum_values.index else None,
+                'total_clients': client_values.loc[idx] if idx in client_values.index else None,
                 'filename': filename,
-                'disclosure_count': sum(1 for col in disclosure_cols if row.get(col) and str(row.get(col)).lower() in ['yes', 'true', '1'])
+                'disclosure_count': int(disclosure_count.loc[idx])
             }
             result.append(record)
         except:
@@ -190,4 +217,4 @@ def simple_load():
     conn.close()
 
 if __name__ == "__main__":
-    simple_load() 
+    simple_load()  
