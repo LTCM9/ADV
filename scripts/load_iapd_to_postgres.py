@@ -99,7 +99,9 @@ def get_dsn_and_engine() -> Tuple[str, sa.Engine]:
     pwd = os.environ["PGPASSWORD"]
     db = os.environ["PGDATABASE"]
     dsn = f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{db}"
-    engine = sa.create_engine(dsn, pool_pre_ping=True, connect_args={"sslmode":"require"})
+    # Use SSL only for remote connections (RDS), disable for local
+    ssl_mode = "require" if host != "localhost" else "disable"
+    engine = sa.create_engine(dsn, pool_pre_ping=True, connect_args={"sslmode": ssl_mode})
     return dsn, engine
 
 # Helper to pick a header
@@ -133,8 +135,9 @@ def normalise(df: pd.DataFrame) -> pd.DataFrame:
 def read_local(path: Path) -> pd.DataFrame:
     if path.name.startswith("._"): raise RuntimeError("stub skip")
     ext = path.suffix.lower()
-    if ext in (".xlsx",".xls"): return pd.read_excel(path, dtype=str, engine="openpyxl")
-    if ext == ".csv": return pd.read_csv(path, dtype=str, sep=",|\\|", engine="python", encoding="utf-8", errors="replace")
+    if ext in (".xlsx",".xls"): 
+        return pd.read_excel(path, engine="openpyxl")
+    if ext == ".csv": return pd.read_csv(path, sep=",|\\|", engine="python", encoding="utf-8", errors="replace")
     raise ValueError(f"Unsupported file: {path}")
 
 # Read from S3 with retry and encoding fallback
@@ -160,9 +163,12 @@ def read_s3(bucket: str, key: str) -> pd.DataFrame:
 # Ingest DataFrame into Postgres
 def ingest_df(name: str, df: pd.DataFrame, dsn: str) -> str:
     try:
-        engine = sa.create_engine(dsn, pool_pre_ping=True, connect_args={"sslmode":"require"})
+        # Use SSL only for remote connections (RDS), disable for local
+        host = dsn.split("@")[1].split(":")[0] if "@" in dsn else "localhost"
+        ssl_mode = "require" if host != "localhost" else "disable"
+        engine = sa.create_engine(dsn, pool_pre_ping=True, connect_args={"sslmode": ssl_mode})
         clean = normalise(df)
-        clean.to_sql("ia_filing", engine, if_exists="append", index=False, method="multi", chunksize=20000)
+        clean.to_sql("ia_filing", engine, if_exists="append", index=False)
         return f"✓ {name}: {len(clean)} rows"
     except Exception as e:
         return f"✗ {name}: {e}"
@@ -189,8 +195,7 @@ def main():
     p.add_argument("--include-exempt", action="store_true")
     args = p.parse_args()
 
-    dsn, _ = get_dsn_and_engine()
-    engine = sa.create_engine(dsn, pool_pre_ping=True, connect_args={"sslmode":"require"})
+    dsn, engine = get_dsn_and_engine()
     with engine.begin() as conn:
         conn.execute(sa.text(CREATE_SQL))
 
@@ -223,8 +228,11 @@ def main():
             for fut in tqdm(as_completed(futures), total=len(tasks), unit="file"):
                 print(fut.result())
     else:
-        for t in tqdm(tasks, unit="file"):
-            print(process_task(t, dsn))
+        # Process all files
+        for i, t in enumerate(tasks):
+            print(f"Processing {i+1}/{len(tasks)}: {t[0]}")
+            result = process_task(t, dsn)
+            print(result)
 
     print("\nDone ✔")
 
