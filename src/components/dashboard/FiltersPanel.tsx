@@ -16,21 +16,21 @@ export interface FilterState {
   status: string;
   hasNewDisclosures: boolean;
   complianceScore: string;
-  aumRange: string;
-  state: string;
 }
 
-const STATES = [
-  'All States', 'NY', 'CA', 'TX', 'FL', 'IL', 'PA', 'CT', 'MA', 'NJ', 'OH'
+const RISK_CATEGORIES = [
+  'All',
+  'Critical',
+  'High', 
+  'Medium',
+  'Low'
 ];
 
-const AUM_RANGES = [
-  'All Ranges',
-  'Under $1B',
-  '$1B - $10B', 
-  '$10B - $100B',
-  '$100B - $1T',
-  'Over $1T'
+const RISK_SCORE_RANGES = [
+  'All',
+  '80+ (Critical)',
+  '60-79 (High)',
+  'Below 60 (Medium/Low)'
 ];
 
 export const FiltersPanel = ({ onFiltersChange }: FiltersProps) => {
@@ -38,9 +38,7 @@ export const FiltersPanel = ({ onFiltersChange }: FiltersProps) => {
     search: '',
     status: 'All',
     hasNewDisclosures: false,
-    complianceScore: 'All',
-    aumRange: 'All Ranges',
-    state: 'All States'
+    complianceScore: 'All'
   });
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -56,9 +54,7 @@ export const FiltersPanel = ({ onFiltersChange }: FiltersProps) => {
       search: '',
       status: 'All',
       hasNewDisclosures: false,
-      complianceScore: 'All',
-      aumRange: 'All Ranges',
-      state: 'All States'
+      complianceScore: 'All'
     };
     setFilters(clearedFilters);
     onFiltersChange(clearedFilters);
@@ -102,65 +98,33 @@ export const FiltersPanel = ({ onFiltersChange }: FiltersProps) => {
 
         {/* Advanced Filters */}
         {isExpanded && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-border">
-            {/* Status Filter */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-border">
+            {/* Risk Category Filter */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Status</Label>
+              <Label className="text-sm font-medium">Risk Category</Label>
               <Select value={filters.status} onValueChange={(value) => updateFilter('status', value)}>
                 <SelectTrigger className="transition-smooth focus:ring-financial-primary">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="All">All Status</SelectItem>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Inactive">Inactive</SelectItem>
-                  <SelectItem value="Suspended">Suspended</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* AUM Range */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">AUM Range</Label>
-              <Select value={filters.aumRange} onValueChange={(value) => updateFilter('aumRange', value)}>
-                <SelectTrigger className="transition-smooth focus:ring-financial-primary">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {AUM_RANGES.map((range) => (
-                    <SelectItem key={range} value={range}>{range}</SelectItem>
+                  {RISK_CATEGORIES.map((category) => (
+                    <SelectItem key={category} value={category}>{category}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* State Filter */}
+            {/* Risk Score Range */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">State</Label>
-              <Select value={filters.state} onValueChange={(value) => updateFilter('state', value)}>
-                <SelectTrigger className="transition-smooth focus:ring-financial-primary">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATES.map((state) => (
-                    <SelectItem key={state} value={state}>{state}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Compliance Score */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Compliance Score</Label>
+              <Label className="text-sm font-medium">Risk Score Range</Label>
               <Select value={filters.complianceScore} onValueChange={(value) => updateFilter('complianceScore', value)}>
                 <SelectTrigger className="transition-smooth focus:ring-financial-primary">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="All">All Scores</SelectItem>
-                  <SelectItem value="90+">90% and above</SelectItem>
-                  <SelectItem value="75-89">75% - 89%</SelectItem>
-                  <SelectItem value="Below 75">Below 75%</SelectItem>
+                  {RISK_SCORE_RANGES.map((range) => (
+                    <SelectItem key={range} value={range}>{range}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

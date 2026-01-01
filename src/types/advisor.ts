@@ -16,6 +16,17 @@ export interface AdvisorFirm {
   disclosures: Disclosure[];
   compliance_score: number;
   status: 'Active' | 'Inactive' | 'Suspended';
+  factors?: {
+    aum_drop_pct?: number;
+    client_drop_pct?: number;
+    acct_drop_pct?: number;
+    cco_changed?: boolean;
+    new_disc?: boolean;
+    trend_down?: boolean;
+    small_raum?: boolean;
+    adviser_age_yrs?: number;
+    owner_moves_12m?: number;
+  };
 }
 
 export interface Disclosure {

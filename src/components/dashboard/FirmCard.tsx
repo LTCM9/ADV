@@ -17,16 +17,19 @@ export const FirmCard = ({ firm, onViewDetails }: FirmCardProps) => {
     return `$${amount.toLocaleString()}`;
   };
 
-  const getComplianceColor = (score: number) => {
-    if (score >= 90) return 'text-financial-success';
-    if (score >= 75) return 'text-financial-warning';
-    return 'text-financial-danger';
+  const getRiskScoreColor = (score: number) => {
+    if (score >= 80) return 'text-financial-danger'; // Critical
+    if (score >= 60) return 'text-financial-warning'; // High
+    if (score >= 30) return 'text-financial-accent'; // Medium
+    return 'text-financial-success'; // Low
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'Active': return 'bg-financial-success/10 text-financial-success border-financial-success/30';
-      case 'Suspended': return 'bg-financial-danger/10 text-financial-danger border-financial-danger/30';
+  const getRiskCategoryColor = (category: string) => {
+    switch (category) {
+      case 'Critical': return 'bg-financial-danger/10 text-financial-danger border-financial-danger/30';
+      case 'High': return 'bg-financial-warning/10 text-financial-warning border-financial-warning/30';
+      case 'Medium': return 'bg-financial-accent/10 text-financial-accent border-financial-accent/30';
+      case 'Low': return 'bg-financial-success/10 text-financial-success border-financial-success/30';
       default: return 'bg-muted text-muted-foreground';
     }
   };
@@ -45,19 +48,18 @@ export const FirmCard = ({ firm, onViewDetails }: FirmCardProps) => {
               <h3 className="font-semibold text-lg text-foreground">{firm.name}</h3>
             </div>
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span>CRD: {firm.crd}</span>
               <span>SEC: {firm.sec_number}</span>
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <Badge className={getStatusColor(firm.status)}>
+            <Badge className={getRiskCategoryColor(firm.status)}>
               {firm.status}
             </Badge>
-            {(newDisclosures.length > 0 || hasHighSeverityDisclosures) && (
+            {firm.disclosures.length > 0 && (
               <div className="flex items-center gap-1 text-financial-warning">
                 <AlertTriangle className="h-4 w-4" />
                 <span className="text-xs font-medium">
-                  {newDisclosures.length > 0 ? `${newDisclosures.length} New` : 'High Risk'}
+                  New Disclosures
                 </span>
               </div>
             )}
@@ -65,39 +67,105 @@ export const FirmCard = ({ firm, onViewDetails }: FirmCardProps) => {
         </div>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div className="flex items-center gap-2">
             <DollarSign className="h-4 w-4 text-financial-accent" />
             <div>
-              <p className="text-sm font-medium text-foreground">{formatAUM(firm.aum)}</p>
+              <p className="text-sm font-medium text-foreground">
+                {firm.aum >= 1000000 ? `$${(firm.aum / 1000000).toFixed(1)}M` : `$${(firm.aum / 1000).toFixed(0)}K`}
+              </p>
               <p className="text-xs text-muted-foreground">AUM</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-financial-secondary" />
             <div>
-              <p className="text-sm font-medium text-foreground">{firm.clients}</p>
+              <p className="text-sm font-medium text-foreground">
+                {firm.clients.toLocaleString()}
+              </p>
               <p className="text-xs text-muted-foreground">Clients</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-financial-warning" />
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {firm.compliance_score}
+              </p>
+              <p className="text-xs text-muted-foreground">Risk Score</p>
             </div>
           </div>
         </div>
 
-        {/* Location & Compliance */}
+        {/* Risk Details */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="h-4 w-4" />
-            <span>{firm.address.city}, {firm.address.state}</span>
-          </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Compliance Score:</span>
-              <span className={`font-medium ${getComplianceColor(firm.compliance_score)}`}>
-                {firm.compliance_score}%
+              <span className="text-muted-foreground">Risk Level:</span>
+              <span className={`font-medium ${getRiskScoreColor(firm.compliance_score)}`}>
+                {firm.compliance_score >= 80 ? 'Critical' : 
+                 firm.compliance_score >= 60 ? 'High' : 
+                 firm.compliance_score >= 30 ? 'Medium' : 'Low'}
               </span>
             </div>
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <Calendar className="h-3 w-3" />
-              <span>Updated {firm.last_updated}</span>
+              <span>SEC #{firm.sec_number}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Risk Scoring Attribution */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-foreground">Risk Factors</p>
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className={`p-2 rounded-md border ${firm.factors?.aum_drop_pct > 0 ? 'bg-financial-warning/10 border-financial-warning/30' : 'bg-muted/30 border-border'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">AUM Drop:</span>
+                <span className="font-medium">{firm.factors?.aum_drop_pct || 0}%</span>
+              </div>
+            </div>
+            <div className={`p-2 rounded-md border ${firm.factors?.client_drop_pct > 0 ? 'bg-financial-warning/10 border-financial-warning/30' : 'bg-muted/30 border-border'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Client Drop:</span>
+                <span className="font-medium">{firm.factors?.client_drop_pct || 0}%</span>
+              </div>
+            </div>
+            <div className={`p-2 rounded-md border ${firm.factors?.acct_drop_pct > 0 ? 'bg-financial-warning/10 border-financial-warning/30' : 'bg-muted/30 border-border'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Account Drop:</span>
+                <span className="font-medium">{firm.factors?.acct_drop_pct || 0}%</span>
+              </div>
+            </div>
+            <div className={`p-2 rounded-md border ${firm.factors?.cco_changed ? 'bg-financial-warning/10 border-financial-warning/30' : 'bg-muted/30 border-border'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">CCO Changed:</span>
+                <span className="font-medium">{firm.factors?.cco_changed ? 'Yes' : 'No'}</span>
+              </div>
+            </div>
+            <div className={`p-2 rounded-md border ${firm.factors?.new_disc ? 'bg-financial-danger/10 border-financial-danger/30' : 'bg-muted/30 border-border'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">New Disclosures:</span>
+                <span className="font-medium">{firm.factors?.new_disc ? 'Yes' : 'No'}</span>
+              </div>
+            </div>
+            <div className={`p-2 rounded-md border ${firm.factors?.trend_down ? 'bg-financial-warning/10 border-financial-warning/30' : 'bg-muted/30 border-border'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Trend Down:</span>
+                <span className="font-medium">{firm.factors?.trend_down ? 'Yes' : 'No'}</span>
+              </div>
+            </div>
+            <div className={`p-2 rounded-md border ${firm.factors?.small_raum ? 'bg-financial-warning/10 border-financial-warning/30' : 'bg-muted/30 border-border'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Small AUM:</span>
+                <span className="font-medium">{firm.factors?.small_raum ? 'Yes' : 'No'}</span>
+              </div>
+            </div>
+            <div className={`p-2 rounded-md border ${firm.factors?.adviser_age_yrs > 0 ? 'bg-financial-accent/10 border-financial-accent/30' : 'bg-muted/30 border-border'}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Adviser Age:</span>
+                <span className="font-medium">{firm.factors?.adviser_age_yrs || 0} yrs</span>
+              </div>
             </div>
           </div>
         </div>

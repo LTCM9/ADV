@@ -1,4 +1,4 @@
--- Enhanced Risk Score Calculation Procedure
+-- Enhanced Risk Score Calculation Procedure (Fixed for sec_number)
 -- Combines the user's approach with additional risk factors
 
 -- Create the risk scores table if it doesn't exist (updated for sec_number)
@@ -113,7 +113,7 @@ BEGIN
 END;
 $$;
 
--- Helper function to get risk statistics
+-- Helper function to get risk statistics (updated for sec_number)
 CREATE OR REPLACE FUNCTION get_risk_statistics()
 RETURNS TABLE (
     risk_category VARCHAR(20),
@@ -158,7 +158,7 @@ BEGIN
     RETURN QUERY
     SELECT 
         rs.sec_number,
-        COALESCE(ic.firm_name::TEXT, 'Unknown') as firm_name,
+        COALESCE(ic.firm_name, 'Unknown') as firm_name,
         rs.score,
         rs.risk_category,
         rs.filing_date,

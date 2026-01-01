@@ -1,10 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { AdvisorFirm } from "@/types/advisor";
-import { mockFirms, mockStats } from "@/data/mockData";
+import { apiService, type DashboardSummary, type Firm } from "@/services/api";
 import { StatsCard } from "./StatsCard";
 import { FirmCard } from "./FirmCard";
 import { FiltersPanel, FilterState } from "./FiltersPanel";
-import { Building2, AlertTriangle, DollarSign, TrendingUp, Bell } from "lucide-react";
+import { Building2, AlertTriangle, DollarSign, TrendingUp, Bell, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -19,67 +19,73 @@ export const Dashboard = () => {
   });
 
   const [selectedFirm, setSelectedFirm] = useState<AdvisorFirm | null>(null);
+  
+  // Real data state
+  const [dashboardData, setDashboardData] = useState<DashboardSummary | null>(null);
+  const [firms, setFirms] = useState<Firm[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch real data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Fetch dashboard summary and firms in parallel
+        const [summaryData, firmsData] = await Promise.all([
+          apiService.getDashboardSummary(),
+          apiService.getFirms(undefined, 50) // Get first 50 firms
+        ]);
+        
+        setDashboardData(summaryData);
+        setFirms(firmsData);
+      } catch (err) {
+        console.error('Failed to fetch data:', err);
+        setError('Failed to load data. Please check if the API server is running.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   // Filter firms based on current filters
   const filteredFirms = useMemo(() => {
-    return mockFirms.filter(firm => {
+    if (!firms.length) return [];
+    
+    return firms.filter(firm => {
       // Search filter
       if (filters.search) {
         const searchTerm = filters.search.toLowerCase();
-        if (!firm.name.toLowerCase().includes(searchTerm) &&
-            !firm.crd.includes(searchTerm) &&
+        if (!firm.firm_name.toLowerCase().includes(searchTerm) &&
             !firm.sec_number.toLowerCase().includes(searchTerm)) {
           return false;
         }
       }
 
-      // Status filter
-      if (filters.status !== 'All' && firm.status !== filters.status) {
+      // Risk category filter
+      if (filters.status !== 'All' && firm.risk_category !== filters.status) {
         return false;
       }
 
       // New disclosures filter
-      if (filters.hasNewDisclosures && !firm.disclosures.some(d => d.is_new)) {
+      if (filters.hasNewDisclosures && !firm.factors.new_disc) {
         return false;
       }
 
-      // Compliance score filter
+      // Risk score filter (using actual risk score ranges)
       if (filters.complianceScore !== 'All') {
-        if (filters.complianceScore === '90+' && firm.compliance_score < 90) return false;
-        if (filters.complianceScore === '75-89' && (firm.compliance_score < 75 || firm.compliance_score >= 90)) return false;
-        if (filters.complianceScore === 'Below 75' && firm.compliance_score >= 75) return false;
-      }
-
-      // State filter
-      if (filters.state !== 'All States' && firm.address.state !== filters.state) {
-        return false;
-      }
-
-      // AUM Range filter
-      if (filters.aumRange !== 'All Ranges') {
-        const aum = firm.aum;
-        switch (filters.aumRange) {
-          case 'Under $1B':
-            if (aum >= 1e9) return false;
-            break;
-          case '$1B - $10B':
-            if (aum < 1e9 || aum >= 10e9) return false;
-            break;
-          case '$10B - $100B':
-            if (aum < 10e9 || aum >= 100e9) return false;
-            break;
-          case '$100B - $1T':
-            if (aum < 100e9 || aum >= 1e12) return false;
-            break;
-          case 'Over $1T':
-            if (aum < 1e12) return false;
-            break;
-        }
+        if (filters.complianceScore === '80+ (Critical)' && firm.score < 80) return false;
+        if (filters.complianceScore === '60-79 (High)' && (firm.score < 60 || firm.score >= 80)) return false;
+        if (filters.complianceScore === 'Below 60 (Medium/Low)' && firm.score >= 60) return false;
       }
 
       return true;
     });
-  }, [filters]);
+  }, [firms, filters]);
 
   const formatAUM = (amount: number) => {
     if (amount >= 1e12) return `$${(amount / 1e12).toFixed(1)}T`;
@@ -92,6 +98,33 @@ export const Dashboard = () => {
     // In a real app, this would navigate to a detail page
     console.log('Viewing details for:', firm.name);
   };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <h2 className="text-lg font-medium">Loading dashboard data...</h2>
+          <p className="text-sm text-muted-foreground">Please wait while we fetch the latest risk data</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="h-8 w-8 mx-auto mb-4 text-destructive" />
+          <h2 className="text-lg font-medium text-destructive">Failed to load data</h2>
+          <p className="text-sm text-muted-foreground mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -106,7 +139,7 @@ export const Dashboard = () => {
             <div className="flex items-center gap-4">
               <Badge className="bg-financial-warning/10 text-financial-warning border-financial-warning/30">
                 <Bell className="h-3 w-3 mr-1" />
-                {mockStats.new_disclosures} New Alerts
+                {dashboardData?.recentFilings || 0} New Alerts
               </Badge>
               <Button className="bg-financial-primary hover:bg-financial-primary/90 text-white">
                 Export Data
@@ -121,37 +154,37 @@ export const Dashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <StatsCard
             title="Total Firms"
-            value={mockStats.total_firms.toLocaleString()}
+            value={dashboardData?.totalFirms.toLocaleString() || '0'}
             icon={Building2}
             subtitle="Registered advisors"
           />
           <StatsCard
-            title="New Disclosures"
-            value={mockStats.new_disclosures}
-            icon={AlertTriangle}
-            variant="warning"
-            subtitle="Last 30 days"
-            trend={{ value: 12, isPositive: false }}
-          />
-          <StatsCard
-            title="High Risk Alerts"
-            value={mockStats.high_severity_alerts}
+            title="Critical Risk"
+            value={dashboardData?.riskStatistics.find(s => s.risk_category === 'Critical')?.firm_count || '0'}
             icon={AlertTriangle}
             variant="danger"
-            subtitle="Critical & High severity"
+            subtitle="Critical risk firms"
           />
           <StatsCard
-            title="Total AUM"
-            value={formatAUM(mockStats.total_aum)}
-            icon={DollarSign}
-            subtitle="Assets under management"
+            title="High Risk"
+            value={dashboardData?.riskStatistics.find(s => s.risk_category === 'High')?.firm_count || '0'}
+            icon={AlertTriangle}
+            variant="warning"
+            subtitle="High risk firms"
           />
           <StatsCard
-            title="Active Monitoring"
-            value={mockStats.firms_with_recent_activity}
+            title="Medium Risk"
+            value={dashboardData?.riskStatistics.find(s => s.risk_category === 'Medium')?.firm_count || '0'}
+            icon={TrendingUp}
+            variant="default"
+            subtitle="Medium risk firms"
+          />
+          <StatsCard
+            title="Low Risk"
+            value={dashboardData?.riskStatistics.find(s => s.risk_category === 'Low')?.firm_count || '0'}
             icon={TrendingUp}
             variant="success"
-            subtitle="Firms with recent activity"
+            subtitle="Low risk firms"
           />
         </div>
 
@@ -167,7 +200,7 @@ export const Dashboard = () => {
               Advisor Firms ({filteredFirms.length})
             </h2>
             <p className="text-sm text-muted-foreground">
-              Showing {filteredFirms.length} of {mockFirms.length} firms
+              Showing {filteredFirms.length} of {firms.length} firms
             </p>
           </div>
         </div>
@@ -176,8 +209,21 @@ export const Dashboard = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {filteredFirms.map((firm) => (
             <FirmCard
-              key={firm.id}
-              firm={firm}
+              key={firm.sec_number}
+              firm={{
+                id: firm.sec_number,
+                name: firm.firm_name,
+                crd: firm.sec_number,
+                sec_number: firm.sec_number,
+                status: firm.risk_category,
+                compliance_score: firm.score,
+                aum: firm.raum || 0,
+                clients: firm.client_count || 0,
+                address: { city: 'N/A', state: 'N/A' }, // Not available in current data
+                disclosures: firm.factors?.new_disc ? [{ is_new: true }] : [],
+                last_updated: firm.latest_filing_date || firm.filing_date,
+                factors: firm.factors // Pass the risk factors data
+              }}
               onViewDetails={handleViewDetails}
             />
           ))}

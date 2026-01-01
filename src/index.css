@@ -47,6 +47,15 @@ All colors MUST be HSL.
     --financial-danger: 0 84% 60%;
     --financial-neutral: 217 10% 40%;
 
+    /* Financial Dashboard Colors - Extended for opacity variants */
+    --financial-primary-rgb: 59 130 246;
+    --financial-secondary-rgb: 99 102 241;
+    --financial-accent-rgb: 14 165 233;
+    --financial-success-rgb: 34 197 94;
+    --financial-warning-rgb: 251 191 36;
+    --financial-danger-rgb: 239 68 68;
+    --financial-neutral-rgb: 107 114 128;
+
     /* Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(217 91% 60% / 0.1), hsl(213 94% 68% / 0.05));
     --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(210 20% 98%));
@@ -124,5 +133,174 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Financial color utilities */
+  .bg-financial-primary {
+    background-color: hsl(var(--financial-primary));
+  }
+  
+  .bg-financial-secondary {
+    background-color: hsl(var(--financial-secondary));
+  }
+  
+  .bg-financial-accent {
+    background-color: hsl(var(--financial-accent));
+  }
+  
+  .bg-financial-success {
+    background-color: hsl(var(--financial-success));
+  }
+  
+  .bg-financial-warning {
+    background-color: hsl(var(--financial-warning));
+  }
+  
+  .bg-financial-danger {
+    background-color: hsl(var(--financial-danger));
+  }
+  
+  .text-financial-primary {
+    color: hsl(var(--financial-primary));
+  }
+  
+  .text-financial-secondary {
+    color: hsl(var(--financial-secondary));
+  }
+  
+  .text-financial-accent {
+    color: hsl(var(--financial-accent));
+  }
+  
+  .text-financial-success {
+    color: hsl(var(--financial-success));
+  }
+  
+  .text-financial-warning {
+    color: hsl(var(--financial-warning));
+  }
+  
+  .text-financial-danger {
+    color: hsl(var(--financial-danger));
+  }
+  
+  .border-financial-primary {
+    border-color: hsl(var(--financial-primary));
+  }
+  
+  .border-financial-success {
+    border-color: hsl(var(--financial-success));
+  }
+  
+  .border-financial-warning {
+    border-color: hsl(var(--financial-warning));
+  }
+  
+  .border-financial-danger {
+    border-color: hsl(var(--financial-danger));
+  }
+  
+  /* Opacity variants */
+  .bg-financial-primary\/10 {
+    background-color: hsl(var(--financial-primary) / 0.1);
+  }
+  
+  .bg-financial-warning\/10 {
+    background-color: hsl(var(--financial-warning) / 0.1);
+  }
+  
+  .bg-financial-success\/10 {
+    background-color: hsl(var(--financial-success) / 0.1);
+  }
+  
+  .bg-financial-danger\/10 {
+    background-color: hsl(var(--financial-danger) / 0.1);
+  }
+  
+  .border-financial-primary\/30 {
+    border-color: hsl(var(--financial-primary) / 0.3);
+  }
+  
+  .border-financial-success\/30 {
+    border-color: hsl(var(--financial-success) / 0.3);
+  }
+  
+  .border-financial-warning\/30 {
+    border-color: hsl(var(--financial-warning) / 0.3);
+  }
+  
+  .border-financial-danger\/30 {
+    border-color: hsl(var(--financial-danger) / 0.3);
+  }
+  
+  .bg-financial-primary\/90 {
+    background-color: hsl(var(--financial-primary) / 0.9);
+  }
+  
+  .bg-financial-warning\/5 {
+    background-color: hsl(var(--financial-warning) / 0.05);
+  }
+  
+  .bg-muted\/50 {
+    background-color: hsl(var(--muted) / 0.5);
+  }
+  
+  .bg-background\/50 {
+    background-color: hsl(var(--background) / 0.5);
+  }
+  
+  /* Gradient utilities */
+  .bg-gradient-card {
+    background: var(--gradient-card);
+  }
+  
+  .bg-gradient-primary {
+    background: var(--gradient-primary);
+  }
+  
+  .bg-gradient-alert {
+    background: var(--gradient-alert);
+  }
+  
+  /* Shadow utilities */
+  .shadow-elegant {
+    box-shadow: var(--shadow-elegant);
+  }
+  
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  
+  .shadow-alert {
+    box-shadow: var(--shadow-alert);
+  }
+  
+  /* Transition utilities */
+  .transition-smooth {
+    transition: var(--transition-smooth);
+  }
+  
+  .transition-fast {
+    transition: var(--transition-fast);
+  }
+  
+  /* Hover effects */
+  .hover\:shadow-elegant:hover {
+    box-shadow: var(--shadow-elegant);
+  }
+  
+  .hover\:bg-financial-primary\/90:hover {
+    background-color: hsl(var(--financial-primary) / 0.9);
+  }
+  
+  .hover\:text-foreground:hover {
+    color: hsl(var(--foreground));
+  }
+  
+  /* Focus effects */
+  .focus\:ring-financial-primary:focus {
+    --tw-ring-color: hsl(var(--financial-primary));
   }
 }

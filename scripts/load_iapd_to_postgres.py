@@ -44,6 +44,8 @@ import argparse, os, sys, io
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Union, Tuple
+import re
+from datetime import datetime
 
 import boto3, botocore
 import pandas as pd
@@ -65,28 +67,28 @@ s3 = boto3.client(
     region_name=os.getenv("AWS_REGION"),
 )
 
-# Header mapping
-HEADER_VARIANTS = {
-    "crd": ["FirmCrdNb"],
-    "filing_date": ["FilingDate"],
-    "raum": ["RAUM_5B2", "RegulatoryAssetsUnderManagement", "Total_RAUM"],
-    "total_accounts": ["Item5F2f_TotalAccts", "TotalNumberOfAccounts"],
-    "disclosure_flag": ["Item11DisclosureFlag", "HasDisciplinaryHistory"],
+# Field mapping for SEC IAPD data
+FIELD_MAPPING = {
+    'sec_number': 'SEC#',
+    'crd_number': 'Organization CRD#',
+    'firm_name': 'Primary Business Name',
+    'legal_name': 'Legal Name',
+    'sec_region': 'SEC Region',
+    'sec_status': 'SEC Current Status',
+    'sec_status_date': 'SEC Status Effective Date',
+    'raum': '5F(2)(c)',  # Regulatory Assets Under Management
+    # Client count will be calculated by summing 5D fields
+    'account_count': '5F(2)(f)',  # Number of accounts
+    'cco_name': 'Chief Compliance Officer Name',
+    'cco_phone': 'Chief Compliance Officer Telephone',
+    'cco_email': 'Chief Compliance Officer E-mail',
+    'firm_type': 'Firm Type',
+    'umbrella_registration': 'Umbrella Registration',
+    'website': 'Website Address',
+    'main_office_city': 'Main Office City',
+    'main_office_state': 'Main Office State',
+    'main_office_country': 'Main Office Country',
 }
-CLIENT_BUCKET_PREFIX = "Item5D_1"
-
-CREATE_SQL = """
-CREATE TABLE IF NOT EXISTS ia_filing (
-  crd             INT,
-  filing_date     DATE,
-  raum            NUMERIC,
-  total_clients   INT,
-  total_accounts  INT,
-  cco_id          TEXT,
-  disclosure_flag CHAR(1),
-  PRIMARY KEY (crd, filing_date)
-);
-"""
 
 # Build DSN string and engine factory
 def get_dsn_and_engine() -> Tuple[str, sa.Engine]:
@@ -99,42 +101,99 @@ def get_dsn_and_engine() -> Tuple[str, sa.Engine]:
     pwd = os.environ["PGPASSWORD"]
     db = os.environ["PGDATABASE"]
     dsn = f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{db}"
-    # Use SSL only for remote connections (RDS), disable for local
-    ssl_mode = "require" if host != "localhost" else "disable"
+    # Use SSL only for remote connections (RDS), disable for local and Docker
+    ssl_mode = "disable" if host in ["localhost", "127.0.0.1", "postgres"] else "require"
     engine = sa.create_engine(dsn, pool_pre_ping=True, connect_args={"sslmode": ssl_mode})
     return dsn, engine
 
-# Helper to pick a header
-def pick_column(df: pd.DataFrame, variants: List[str]) -> Union[str, None]:
-    for v in variants:
-        if v in df.columns:
-            return v
+# Extract filing date from filename
+def extract_filing_date(filename: str) -> str:
+    """Extract filing date from filename like 'ia010220.xlsx' -> '2020-01-02'"""
+    # Try 2-digit year format first (iaMMDDYY)
+    match = re.search(r'ia(\d{2})(\d{2})(\d{2})', filename)
+    if match:
+        month, day, year_2digit = match.groups()
+        # Convert 2-digit year to 4-digit (assuming 20xx for years 20-99, 19xx for 00-19)
+        year_4digit = f"20{year_2digit}" if int(year_2digit) >= 20 else f"19{year_2digit}"
+        return f"{year_4digit}-{month}-{day}"
+    
+    # Try 4-digit year format as fallback (iaMMDDYYYY)
+    match = re.search(r'ia(\d{2})(\d{2})(\d{4})', filename)
+    if match:
+        month, day, year = match.groups()
+        return f"{year}-{month}-{day}"
+    
     return None
 
+# Count Section 11 disciplinary disclosures
+def count_disciplinary_disclosures(df: pd.DataFrame) -> int:
+    """Count Section 11 disciplinary disclosure fields"""
+    # Look for the main Section 11 column first (Y/N indicator)
+    if '11' in df.columns:
+        # Convert Y/N to 1/0
+        return (df['11'] == 'Y').astype(int)
+    
+    # Fallback: look for count columns
+    section_11_cols = [col for col in df.columns if 'Count' in col and any(x in col for x in ['11A', '11B', '11C', '11D', '11E', '11F', '11G', '11H'])]
+    if section_11_cols:
+        return df[section_11_cols].sum(axis=1).fillna(0).astype(int)
+    
+    return 0
+
 # Normalize DataFrame
-def normalise(df: pd.DataFrame) -> pd.DataFrame:
+def normalize_dataframe(df: pd.DataFrame, filename: str) -> pd.DataFrame:
+    """Normalize the DataFrame to match our database schema"""
     df.columns = df.columns.map(str)
+    
+    # Create output DataFrame
     out = pd.DataFrame()
-    for canon, variants in HEADER_VARIANTS.items():
-        col = pick_column(df, variants)
-        out[canon] = df[col] if col else None
-    for c in ("raum","total_accounts"): out[c] = pd.to_numeric(out[c], errors="coerce")
-    buckets = [c for c in df.columns if c.startswith(CLIENT_BUCKET_PREFIX)]
-    if buckets:
-        bucket_data = df[buckets]
-        for col in buckets:
-            bucket_data[col] = pd.to_numeric(bucket_data[col], errors="coerce")
-        out["total_clients"] = bucket_data.sum(axis=1)
+    
+    # Map fields from the source data
+    for db_field, source_field in FIELD_MAPPING.items():
+        if source_field in df.columns:
+            out[db_field] = df[source_field]
+        else:
+            out[db_field] = None
+    
+    # Extract filing date from filename
+    filing_date = extract_filing_date(filename)
+    if filing_date:
+        out['filing_date'] = filing_date
+    
+    # Convert numeric fields
+    if 'raum' in out.columns:
+        out['raum'] = pd.to_numeric(out['raum'], errors='coerce')
+    
+    # Calculate client count by summing 5D fields (5D(a)(1) through 5D(n)(1))
+    client_columns = []
+    for letter in 'abcdefghijklmn':
+        col_name = f'5D({letter})(1)'
+        if col_name in df.columns:
+            client_columns.append(col_name)
+    
+    if client_columns:
+        out['client_count'] = df[client_columns].apply(pd.to_numeric, errors='coerce').sum(axis=1)
     else:
-        out["total_clients"] = None
-    if {"ChiefComplianceOfficer_FirstName","ChiefComplianceOfficer_LastName","ChiefComplianceOfficer_CRD"}.issubset(df.columns):
-        out["cco_id"] = (
-            df["ChiefComplianceOfficer_FirstName"].fillna("").str.strip().str.upper()
-            + "|" + df["ChiefComplianceOfficer_LastName"].fillna("").str.strip().str.upper()
-            + "|" + df["ChiefComplianceOfficer_CRD"].fillna("")
-        )
-    else:
-        out["cco_id"] = None
+        out['client_count'] = 0
+    
+    if 'account_count' in out.columns:
+        out['account_count'] = pd.to_numeric(out['account_count'], errors='coerce')
+    
+    # Convert boolean fields
+    if 'umbrella_registration' in out.columns:
+        out['umbrella_registration'] = out['umbrella_registration'].map({'Y': True, 'N': False, 'Yes': True, 'No': False})
+    
+    # Count disciplinary disclosures (Section 11)
+    out['disciplinary_disclosures'] = count_disciplinary_disclosures(df)
+    
+    # Clean up SEC number format
+    if 'sec_number' in out.columns:
+        out['sec_number'] = out['sec_number'].astype(str).str.strip()
+    
+    # Clean up CRD number format (keep as string to preserve leading zeros)
+    if 'crd_number' in out.columns:
+        out['crd_number'] = out['crd_number'].astype(str).str.strip()
+    
     return out
 
 # Read a local file
@@ -143,7 +202,8 @@ def read_local(path: Path) -> pd.DataFrame:
     ext = path.suffix.lower()
     if ext in (".xlsx",".xls"): 
         return pd.read_excel(path, engine="openpyxl")
-    if ext == ".csv": return pd.read_csv(path, sep=",|\\|", engine="python", encoding="utf-8", errors="replace")
+    if ext == ".csv": 
+        return pd.read_csv(path, sep=",|\\|", engine="python", encoding="utf-8")
     raise ValueError(f"Unsupported file: {path}")
 
 # Read from S3 with retry and encoding fallback
@@ -169,20 +229,30 @@ def read_s3(bucket: str, key: str) -> pd.DataFrame:
 # Ingest DataFrame into Postgres
 def ingest_df(name: str, df: pd.DataFrame, dsn: str) -> str:
     try:
-        # Use SSL only for remote connections (RDS), disable for local
-        host = dsn.split("@")[1].split(":")[0] if "@" in dsn else "localhost"
-        ssl_mode = "require" if host != "localhost" else "disable"
-        engine = sa.create_engine(dsn, pool_pre_ping=True, connect_args={"sslmode": ssl_mode})
-        clean = normalise(df)
+        # For now, disable SSL completely to avoid connection issues
+        # Remove any SSL parameters from the DSN and force disable
+        dsn_clean = dsn.replace("?sslmode=require", "").replace("&sslmode=require", "")
+        engine = sa.create_engine(dsn_clean, pool_pre_ping=True, connect_args={"sslmode": "disable"})
+        
+        # Normalize the data
+        clean = normalize_dataframe(df, name)
+        
+        # Filter out rows without SEC numbers
+        clean = clean.dropna(subset=['sec_number'])
+        
+        if len(clean) == 0:
+            return f"· {name}: No valid SEC numbers found"
+        
+        # Load into database
         clean.to_sql("ia_filing", engine, if_exists="append", index=False, method='multi')
-        return f"✓ {name}: {len(clean)} rows"
+        return f"✓ {name}: {len(clean)} rows loaded"
     except Exception as e:
         return f"✗ {name}: {e}"
 
 # Process one task (local or s3)
 def process_task(task: Tuple[str, Union[Path, Tuple[str,str]]], dsn: str) -> str:
     name, src = task
-    # ▷ Skip any FOIA CSVs (they’re badly formatted and we don’t ingest them)
+    # ▷ Skip any FOIA CSVs (they're badly formatted and we don't ingest them)
     if name.lower().endswith('.csv') and 'foia' in name.lower():
         return f"· {name}: skipping FOIA file"
     try:
@@ -202,8 +272,17 @@ def main():
     args = p.parse_args()
 
     dsn, engine = get_dsn_and_engine()
+    
+    # Create tables using the updated schema
     with engine.begin() as conn:
-        conn.execute(sa.text(CREATE_SQL))
+        # Read and execute the schema file
+        schema_file = Path("scripts/schema.sql")
+        if schema_file.exists():
+            with open(schema_file, 'r') as f:
+                schema_sql = f.read()
+            conn.execute(sa.text(schema_sql))
+        else:
+            print("Warning: schema.sql not found, using default schema")
 
     tasks: List[Tuple[str, Union[Path, Tuple[str,str]]]] = []
     if args.src.lower().startswith("s3://"):
